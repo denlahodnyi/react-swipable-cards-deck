@@ -1,0 +1,33 @@
+.deck-wrapper {
+  margin-top: 100px;
+}
+.deck {
+  width: 100%;
+  display: flex;
+  position: relative;
+}
+.card-container {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 100vw;
+  will-change: transform;
+  display: flex;
+  justify-content: center;
+  transform-origin: top center;
+  touch-action: none; /* required on Android */
+}
+.card-outer {
+  position: relative;
+  width: 250px;
+  border: 1px solid grey;
+  display: flex;
+  flex-direction: column;
+}
+.card-inner {
+  width: 100%;
+}
+.front-card {
+  background-color: bisque;
+  color: brown;
+}
