@@ -1,0 +1,22 @@
+{
+  "files": {
+    "main.css": "/react-swipable-cards-deck/static/css/main.66477954.chunk.css",
+    "main.js": "/react-swipable-cards-deck/static/js/main.fe1f4b40.chunk.js",
+    "main.js.map": "/react-swipable-cards-deck/static/js/main.fe1f4b40.chunk.js.map",
+    "runtime-main.js": "/react-swipable-cards-deck/static/js/runtime-main.1de1c23f.js",
+    "runtime-main.js.map": "/react-swipable-cards-deck/static/js/runtime-main.1de1c23f.js.map",
+    "static/js/2.e2737986.chunk.js": "/react-swipable-cards-deck/static/js/2.e2737986.chunk.js",
+    "static/js/2.e2737986.chunk.js.map": "/react-swipable-cards-deck/static/js/2.e2737986.chunk.js.map",
+    "static/js/3.bd33fbf7.chunk.js": "/react-swipable-cards-deck/static/js/3.bd33fbf7.chunk.js",
+    "static/js/3.bd33fbf7.chunk.js.map": "/react-swipable-cards-deck/static/js/3.bd33fbf7.chunk.js.map",
+    "index.html": "/react-swipable-cards-deck/index.html",
+    "static/css/main.66477954.chunk.css.map": "/react-swipable-cards-deck/static/css/main.66477954.chunk.css.map",
+    "static/js/2.e2737986.chunk.js.LICENSE.txt": "/react-swipable-cards-deck/static/js/2.e2737986.chunk.js.LICENSE.txt"
+  },
+  "entrypoints": [
+    "static/js/runtime-main.1de1c23f.js",
+    "static/js/2.e2737986.chunk.js",
+    "static/css/main.66477954.chunk.css",
+    "static/js/main.fe1f4b40.chunk.js"
+  ]
+}
