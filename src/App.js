@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Swiper from './Deck/Deck';
+import Deck from './Deck/Deck';
 import './App.css';
 
-let deck = [
+let deck_a = [
   { id: 1, name: 'A' },
   { id: 2, name: 'B' },
   { id: 3, name: 'C' },
   { id: 4, name: 'D' },
   { id: 5, name: 'E' },
 ];
-let next_deck = [
+let deck_b = [
   { id: 6, name: 'F' },
   { id: 7, name: 'G' },
   { id: 8, name: 'H' },
@@ -23,43 +23,60 @@ function getRandomInt(min, max) {
   return Math.floor(Math.random() * (max - min) + min);
 }
 
-const randomH = [...deck, ...next_deck].map(o => getRandomInt(50, 250));
+function getCardsWithRandomHeight(items) {
+  return items.map(o => ({ ...o, height: getRandomInt(50, 250) }));
+}
+
 
 function App() {
-  const [items, set] = useState(deck);
-  const swiperRef = useRef(null);
+  const [items, setItems] = useState(() => getCardsWithRandomHeight(deck_a));
+  const deckRef = useRef(null);
+
+  function addItems() {
+    setItems(prevItems => [...prevItems, ...getCardsWithRandomHeight(deck_b)]);
+  }
 
   function removeBack() {
-    if (swiperRef.current && swiperRef.current.swipeBack) {
-      swiperRef.current.swipeBack();
+    if (deckRef.current && deckRef.current.swipeBack) {
+      const { item, index } = deckRef.current.swipeBack();
+      console.log('%cremoveBack', 'color: brown', { item, index })
     }
   }
 
   function swipeLeft() {
-    if (swiperRef.current && swiperRef.current.swipeLeft) {
-      const { item, index } = swiperRef.current.swipeLeft();
-      console.log('swipeLeft', item, index)
+    if (deckRef.current && deckRef.current.swipeLeft) {
+      const { item, index } = deckRef.current.swipeLeft();
+      console.log('%cswipeLeft', 'color: green', { item, index })
     }
   }
 
   function swipeRight() {
-    if (swiperRef.current && swiperRef.current.swipeRight) {
-      const { item, index } = swiperRef.current.swipeRight();
-      console.log('swipeRight', item, index)
+    if (deckRef.current && deckRef.current.swipeRight) {
+      const { item, index } = deckRef.current.swipeRight();
+      console.log('%cswipeRight', 'color: blue', { item, index })
     }
   }
 
-  function onSwipeLeft(item, i) {
-    console.log('onSwipeLeft', item, i)
+  function onSwipeLeft(item, index) {
+    console.log('onSwipeLeft', { item, index })
   }
 
-  function onSwipeRight(item, i) {
-    console.log('onSwipeRight', item, i)
+  function onSwipeRight(item, index) {
+    console.log('onSwipeRight', { item, index })
   }
 
   function jumpToCardIndex(index) {
-    if (swiperRef.current && swiperRef.current.jumpToCardIndex) {
-      swiperRef.current.jumpToCardIndex(index);
+    if (deckRef.current && deckRef.current.jumpToCardIndex) {
+      deckRef.current.jumpToCardIndex(index);
+    }
+  }
+
+  function updateCardName(value) {
+    if (deckRef.current && deckRef.current.currentIndex >= 0) {
+      const currIndex = deckRef.current.currentIndex;
+      deckRef.current.updateCard(currIndex, (card) => {
+        return { ...card, name: value };
+      });
     }
   }
 
@@ -71,19 +88,19 @@ function App() {
     // console.log('START')
   }
 
-  function cardClick() {
-    console.log('CLICK')
+  function cardClick(i) {
+    console.log('CLICK', i)
   }
 
-  const renderItem = useCallback((item, i) => (
-    <div className="my-card">
+  const renderItem = useCallback(({ height, name }, i) => (
+    <div className="my-card" key={`cardItem__${i}`}>
       <div className="my-card__img">
         image
       </div>
-      <div className="my-card__text-content" style={{ height: randomH[i] }} onClick={cardClick}>
+      <div className="my-card__text-content" style={{ height }} onClick={() => cardClick(i)}>
         <div style={{ color: 'red', textAlign: 'center' }}>
           card text
-          <div>{item.name}</div>
+          <div>{name}</div>
         </div>
       </div>
     </div>
@@ -92,17 +109,20 @@ function App() {
   return (
     <div className="App">
       <div className="controllers-wrapper">
-        <button className="controller" onClick={() => set([...deck, ...next_deck])}>Add cards</button>
+        <button className="controller" onClick={addItems}>Add cards</button>
         <button className="controller" onClick={removeBack}>Return Last</button>
         <button className="controller" onClick={swipeLeft}>Swipe Left</button>
         <button className="controller" onClick={swipeRight}>Swipe Right</button>
         <input id="next-index" type="number" placeholder="index" min={0} className="input"/>
         <button className="controller" onClick={() => jumpToCardIndex(document.getElementById('next-index').value)}>To index</button>
+        <input id="new-name" placeholder="name" className="input"/>
+        <button className="controller" onClick={() => updateCardName(document.getElementById('new-name').value)}>Set new name</button>
       </div>
-      <Swiper
+      <p style={{ padding: '0 16px', margin: 0, color: '#CECECE', fontStyle: 'italic' }}>Deck adapts its height on viewport height change</p>
+      <Deck
         items={items}
         renderItem={renderItem}
-        ref={swiperRef}
+        ref={deckRef}
         adaptiveHeight={true}
         maxVisibleStack={4}
         leftLabel={<div style={{ position: 'absolute', right: 0 }}>LEFT</div>}
