@@ -4,7 +4,6 @@ import { useSprings, animated, interpolate } from 'react-spring';
 import { useDrag } from 'react-use-gesture';
 import map from 'lodash/map';
 import debounce from 'lodash/debounce';
-import isEqual from 'lodash/isEqual';
 import './Deck.css';
 
 // These two are just helpers, they curate spring data, values that are later being interpolated into css
@@ -28,12 +27,13 @@ const Deck = forwardRef((props, ref) => {
     items,
     leftLabel,
     maxVisibleStack,
+    onDeckHeightChange,
     onSwipeLeft,
     onSwipeRight,
     onSwipeStart,
     onSwipeEnd,
     renderItem,
-    resizeDebounce = DEBOUNCE,
+    // resizeDebounce = DEBOUNCE,
     rightLabel,
     translateZ = TRANSLATE_Z,
     trashhold = TRASHHOLD
@@ -45,64 +45,80 @@ const Deck = forwardRef((props, ref) => {
   const [label, setLabel] = useState('');
   const [height, setHeight] = useState(0);
   const [resize, setResize] = useState(0);
+  const [isCardSwiped, setIsCardSwiped] = useState(false);
   const [springs, setSprings] = useSprings(deck.length, i => ({ ...to(i, shiftY, translateZ), from: from(i) })); // Create a bunch of springs using the helpers above
   const containerHeight = height + (deck.length === 1 ? 0 : deck.length <= maxVisibleStack ? deck.length * shiftY : maxVisibleStack * shiftY);
-  const viewPort = window.innerWidth + 200;
-  console.log('containerHeight', containerHeight);
-  console.log('height', height);
-  console.log('logs', logs);
-  console.log('resize', resize);
+  // const viewPort = window.innerWidth + 200;
+  // console.log('containerHeight', containerHeight);
+  // console.log('height', height);
+  // console.log('logs', logs);
+  // console.log('resize', resize);
+  console.log('currentIndex', currentIndex);
+  console.log('deck', deck);
 
   const elements = useRef([{}, false]);
   const heightRef = useRef(height);
   const prevItems = useRef(items);
 
   const cardChildMeasureRef = useCallback(node => {
-    setTimeout(() => {
-      if (adaptiveHeight && node !== null && elements.current && (!elements.current[0][node.id] || elements.current[0][node.id].offsetHeight !== node.offsetHeight)) {
-        // console.log('node.offsetHeight', node.id, node.offsetHeight)
-        elements.current[0][node.id] = node;
-        elements.current[1] = Object.keys(elements.current[0]).length === deck.length;
-        if (elements.current[1]) setResize(n => n + 1);
-      }
-    }, 0)
-  }, [JSON.stringify(deck)]);
+    const [elList, isFullList] = elements.current || [{}, false];
+    // setTimeout(() => {
+    //   if (adaptiveHeight && node !== null && elements.current && (!elements.current[0][node.id] || elements.current[0][node.id].offsetHeight !== node.offsetHeight)) {
+    //     // console.log('node.offsetHeight', node.id, node.offsetHeight)
+    //     elements.current[0][node.id] = node;
+    //     elements.current[1] = Object.keys(elements.current[0]).length === deck.length;
+    //     if (elements.current[1]) setResize(n => n + 1);
+    //   }
+    // }, 0);
+    if (adaptiveHeight && node !== null && elements.current && (!elList[node.id] || elList[node.id].offsetHeight !== node.offsetHeight)) {
+      elList[node.id] = node;
+      elements.current[1] = Object.keys(elList).length === deck.length;
+      if (elements.current[1]) setResize(n => n + 1);
+    }
+  }, [deck.length]);
 
   useEffect(() => {
     if (adaptiveHeight && elements.current[1]) {
       function calcMax() {
         const arr = map(elements.current[0], (el) => {
           el.style = '';
-          const contentH = el.offsetHeight;
+          const contentHeight = el.offsetHeight;
           el.style = 'flex: 1;';
-          return contentH;
+          return contentHeight;
         });
         const max = Math.max(...arr);
-        if (max !== height) {
+        if (max !== heightRef.current) {
           heightRef.current = max;
           setHeight(max);
         }
-        setLogs(o => ({ ...o, heights: arr }));
       }
       function resizeCb() {
         calcMax();
       }
-      const debouncedResCb = debounce(resizeCb, resizeDebounce);
-      window.addEventListener("resize", debouncedResCb);
+      const debouncedResCb = debounce(resizeCb, 1000);
+      window.addEventListener('resize', debouncedResCb);
       calcMax();
       return () => {
-        window.removeEventListener("resize", debouncedResCb);
+        window.removeEventListener('resize', debouncedResCb);
       };
     }
   }, [adaptiveHeight, resize]);
 
   useEffect(() => {
-    if (!isEqual(prevItems.current, items)) {
+    if (onDeckHeightChange) onDeckHeightChange(containerHeight);
+  }, [containerHeight]);
+
+  useEffect(() => {
+    if (prevItems.current !== items) {
       gone.clear();
+      // itemsHeight.clear();
       elements.current = [{}, false];
+      heightRef.current = 0;
       setHeight(0);
       setDeck(items);
       setCurrentIndex(0);
+
+      setIsCardSwiped(false);
     }
   }, [JSON.stringify(items)]);
 
@@ -110,19 +126,37 @@ const Deck = forwardRef((props, ref) => {
 
   useImperativeHandle(ref, () => {
     return {
+      currentIndex,
+      isCardSwiped,
+      jumpToCardIndex,
       swipeBack,
       swipeLeft,
       swipeRight,
-      jumpToCardIndex,
+      updateCard,
     };
   });
+
+  function updateCard(cardIndex, cb = () => {}) {
+    if (cardIndex >= 0 && deck[cardIndex]) {
+      const updCard = cb(deck[cardIndex]);
+      if (updCard) {
+        const nextDeck = [...deck];
+        nextDeck[cardIndex] = updCard;
+        setDeck(nextDeck);
+      }
+    }
+  }
 
   function getNextCardsIndexes(currIndex) {
     return deck[currIndex] ? deck.map((o, i) => i).splice(currIndex, deck.length) : [];
   }
 
+  function getUngoneIndexes() {
+    return deck.map((o, i) => !gone.has(i) && i).filter(i => i !== false);
+  }
+
   function getX(dir) {
-    return viewPort * dir;
+    return (200 + window.innerWidth) * dir;
   }
 
   function changeLabel(mx = 0, down = false) {
@@ -141,11 +175,11 @@ const Deck = forwardRef((props, ref) => {
         if (i < index) {
           if (!gone.has(i)) {
             gone.add(i);
-            return { x: viewPort * -1, rot: 70, delay: 0, };
+            return { x: (200 + window.innerWidth) * -1, rot: 70, delay: 0, };
           }
         } else {
           if (gone.has(i)) gone.delete(i);
-          return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * translateZ, rot: 0, delay: 0, };
+          return { x: 0, y: ungone.indexOf(i) * 13, z: ungone.indexOf(i) * -30, rot: 0, delay: 0, };
         }
       });
       setCurrentIndex(index);
@@ -153,55 +187,61 @@ const Deck = forwardRef((props, ref) => {
   }
 
   function swipeBack() {
-    const index = currentIndex - 1;
+    const goneArr = [...gone];
+    const index = goneArr[goneArr.length - 1];
+
     if (index >= 0 && deck[index]) {
-      const ungone = getNextCardsIndexes(index);
+      gone.delete(index);
+      const ungone = getUngoneIndexes();
       setSprings(i => {
-        if (i === index) {
-          if (gone.has(i)) gone.delete(i);
-          return { x: 0, y: 0, z: 0, rot: 0, delay: 0, };
-        } else if (i > index) {
-          return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * translateZ, rot: 0, delay: 0, };
+        if (!gone.has(i)) {
+          return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * -30, rot: 0, delay: 0, };
         }
       });
-      setCurrentIndex(index);
+      setCurrentIndex(currentIndex === 0 ? currentIndex : currentIndex - 1);
+      if (gone.size === 0) setIsCardSwiped(false);
+      return { item: deck[index], index };
     }
+
+    return {};
   }
 
-  function swipeLeft() {
+  function swipeLeft(index) {
+    const cardIndexToSwipe = index >= 0 ? index : currentIndex;
     const dir = -1;
-    const ungone = getNextCardsIndexes(currentIndex + 1);
     const x = getX(dir);
-    gone.add(currentIndex);
+    gone.add(cardIndexToSwipe);
+    const ungone = getUngoneIndexes();
     setSprings(i => {
-      if (i === currentIndex) return { x, y: 0, rot: 70, delay: 0, config: { friction: 50, tension: 500 } };
-      if (!gone.has(i) && ungone.length) return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * translateZ, rot: 0, delay: 0, };
+      if (i === cardIndexToSwipe) return { x, rot: 70, delay: 0, config: { friction: 50, tension: 500 } };
+      if (!gone.has(i) && ungone.length) return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * -30, rot: 0, delay: 0, };
     });
-    setCurrentIndex(currentIndex + 1);
-    return { item: deck[currentIndex], index: currentIndex };
+    if (cardIndexToSwipe === currentIndex) setCurrentIndex(currentIndex + 1);
+    setIsCardSwiped(true);
+    return { item: deck[cardIndexToSwipe], index: cardIndexToSwipe };
   }
 
-  function swipeRight() {
+  function swipeRight(index) {
+    const cardIndexToSwipe = index >= 0 ? index : currentIndex;
     const dir = 1;
-    const ungone = getNextCardsIndexes(currentIndex + 1);
     const x = getX(dir);
-    gone.add(currentIndex);
+    gone.add(cardIndexToSwipe);
+    const ungone = getUngoneIndexes();
     setSprings(i => {
-      if (i === currentIndex) return { x, rot: -70, delay: 0, config: { friction: 50, tension: 500 } };
-      if (!gone.has(i) && ungone.length) return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * translateZ, rot: 0, delay: 0, };
+      if (i === cardIndexToSwipe) return { x, rot: -70, delay: 0, config: { friction: 50, tension: 500 } };
+      if (!gone.has(i) && ungone.length) return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * -30, rot: 0, delay: 0, };
     });
-    setCurrentIndex(currentIndex + 1);
-    return { item: deck[currentIndex], index: currentIndex };
+    if (cardIndexToSwipe === currentIndex) setCurrentIndex(currentIndex + 1);
+    setIsCardSwiped(true);
+    return { item: deck[cardIndexToSwipe], index: cardIndexToSwipe };
   }
 
   const bind = useDrag(gestureState => {
-    const { event, canceled, args: [index], down, movement: [mx], direction: [xDir] } = gestureState;
-    // xDir on stop could be 0 or last value
+    const { event, args: [index], down, movement: [mx], direction: [xDir] } = gestureState;
     const dir = xDir < 0 ? -1 : 1;
     const humanDir = mx < 0 ? 'left' : 'right';
     let onRest = () => {};
     let isReadyToLeave = false;
-    // console.log('event', event)
 
     if (onSwipeStart) onSwipeStart(humanDir);
 
@@ -213,16 +253,16 @@ const Deck = forwardRef((props, ref) => {
       changeLabel(mx, down);
       if (!down && !isReadyToLeave) rot = 0;
       if (!down && isReadyToLeave) {
-        const ungone = getNextCardsIndexes(i + 1);
+        const ungone = getUngoneIndexes();
         gone.add(i);
         x = getX(humanDir === 'left' ? -1 : 1);
         rot = humanDir === 'left' ? 70 : -70;
         setCurrentIndex(i + 1);
+        setIsCardSwiped(true);
         setSprings(i => {
-          if (!gone.has(i) && ungone.length) return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * translateZ, rot: 0, delay: 0, };
+          if (!gone.has(i) && ungone.length) return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * -30, rot: 0, delay: 0, };
         });
         setLabel('');
-        // if (humanDir === 'left') onRest = () => onSwipeLeft(i);
         if (humanDir === 'left') onSwipeLeft(deck[i], i);
         if (humanDir === 'right') onSwipeRight(deck[i], i);
       }
@@ -251,12 +291,10 @@ const Deck = forwardRef((props, ref) => {
               <animated.div
                 key={i}
                 style={{
-                  ...i > currentIndex + maxVisibleStack || x < viewPort * -1 ? { visibility: 'hidden' } : {},
+                  ...i > currentIndex + maxVisibleStack || i < currentIndex ? { visibility: 'hidden' } : {},
                   zIndex: i === currentIndex ? 0 : i > currentIndex ? -i : 0,
                   transform: interpolate([x, y, rot], containerTrans),
-                  // visibility: interpolate([x], (x) => {
-                  //   return i > currentIndex + maxVisibleStack || (x < 0 ? x * -1 : x) >= viewPort ? 'hidden' : 'visible'
-                  // })
+                  touchAction: 'pan-y' /* required on Android */
                 }}
                 className="card-container"
               >
@@ -264,6 +302,7 @@ const Deck = forwardRef((props, ref) => {
                   {...bind(i)}
                   id={`card__${i}`}
                   style={{
+                    ...adaptiveHeight ? { boxSizing: 'border-box' } : {},
                     transform: interpolate([z], cardTrans)
                   }}
                   className={`card-outer ${i === currentIndex ? 'front-card' : ''}`}
@@ -274,7 +313,7 @@ const Deck = forwardRef((props, ref) => {
                     id={`card_ch_${i}`}
                     ref={cardChildMeasureRef}
                     className="card-inner"
-                    style={{ ...adaptiveHeight ? { boxSizing: 'border-box' } : {}, /* border-box is required if adaptiveHeight enabled */ }}
+                    // style={{ ...adaptiveHeight ? { boxSizing: 'border-box' } : {}, /* border-box is required if adaptiveHeight enabled */ }}
                   >
                     {renderItem(deck[i], i)}
                   </div>
