@@ -1,15 +1,28 @@
 import React, { useState, useEffect, useLayoutEffect, forwardRef, useRef, useImperativeHandle, useCallback, memo } from 'react'
-import PropTypes from 'prop-types';
-import { useSprings, animated, interpolate } from 'react-spring';
+import { useSprings, animated, interpolate as to } from 'react-spring';
 import { useDrag } from 'react-use-gesture';
 import map from 'lodash/map';
+import forEach from 'lodash/forEach';
 import debounce from 'lodash/debounce';
 import './Deck.css';
 
-// These two are just helpers, they curate spring data, values that are later being interpolated into css
-const to = (i, shiftY, translateZ) => ({ x: 0, y: i * shiftY, z: i * translateZ, rot: 0, delay: i * 100 });
-const from = i => ({ x: 0, y: 0, z: 0, rot: 0 });
-// This is being used down there in the view, it interpolates rotation and scale into a css transform
+const baseTo = (i, shiftY, translateZ, gone = new Set(), ungoneIdxs = [], currentIndex, maxVisibleStack) => {
+  const isGone = gone && gone.has(i);
+  const index = isGone ? 0 : ungoneIdxs.length ? ungoneIdxs.indexOf(i) : i;
+
+  return {
+    x: 0,
+    y: index * shiftY,
+    z: index * translateZ,
+    rot: 0,
+    delay: index * 100,
+    visible: isGone || i > (currentIndex + maxVisibleStack) ? 0 : 1,
+  };
+};
+const baseFrom = (i, gone = new Set(), ungoneIdxs = []) => {
+  const firstIdx = gone.length && ungoneIdxs.length ? ungoneIdxs[0] : 0;
+  return { x: 0, y: 0, z: 0, rot: 0, visible: i === firstIdx ? 1 : 0 };
+};
 const cardTrans = (z) => `perspective(1500px) translateZ(${z}px)`;
 const containerTrans  = (x, y, rot) => {
   return !x && !y ? 'none' : `translate3d(${x}px, ${y}px, 0px) rotate(${rot}deg)`;
@@ -23,7 +36,7 @@ const DEBOUNCE = 1000;
 const Deck = forwardRef((props, ref) => {
   const {
     adaptiveHeight,
-    shiftY = CARD_SHIFT_Y,
+    initIndex = 0,
     items,
     leftLabel,
     maxVisibleStack,
@@ -35,26 +48,28 @@ const Deck = forwardRef((props, ref) => {
     renderItem,
     // resizeDebounce = DEBOUNCE,
     rightLabel,
+    shiftY = CARD_SHIFT_Y,
     translateZ = TRANSLATE_Z,
     trashhold = TRASHHOLD
   } = props;
   const [logs, setLogs] = useState({ drag: {}, heights: [] });
   const [deck, setDeck] = useState([...items]);
-  const [gone] = useState(() => new Set());
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [deckChanged, setDeckChanged] = useState(0);
+  const [gone, setGone] = useState(setGoneCardsOnInit);
+  const [currentIndex, setCurrentIndex] = useState(initIndex);
   const [label, setLabel] = useState('');
   const [height, setHeight] = useState(0);
   const [resize, setResize] = useState(0);
   const [isCardSwiped, setIsCardSwiped] = useState(false);
-  const [springs, setSprings] = useSprings(deck.length, i => ({ ...to(i, shiftY, translateZ), from: from(i) })); // Create a bunch of springs using the helpers above
+  const [springs, setSprings, stopSprings] = useSprings(deck.length, i => ({
+    ...baseTo(i, shiftY, translateZ, gone, getUngoneIndexes(), currentIndex, maxVisibleStack),
+    from: baseFrom(i, gone, getUngoneIndexes())
+  }));
   const containerHeight = height + (deck.length === 1 ? 0 : deck.length <= maxVisibleStack ? deck.length * shiftY : maxVisibleStack * shiftY);
   // const viewPort = window.innerWidth + 200;
   // console.log('containerHeight', containerHeight);
   // console.log('height', height);
   // console.log('logs', logs);
-  // console.log('resize', resize);
-  console.log('currentIndex', currentIndex);
-  console.log('deck', deck);
 
   const elements = useRef([{}, false]);
   const heightRef = useRef(height);
@@ -62,20 +77,24 @@ const Deck = forwardRef((props, ref) => {
 
   const cardChildMeasureRef = useCallback(node => {
     const [elList, isFullList] = elements.current || [{}, false];
-    // setTimeout(() => {
-    //   if (adaptiveHeight && node !== null && elements.current && (!elements.current[0][node.id] || elements.current[0][node.id].offsetHeight !== node.offsetHeight)) {
-    //     // console.log('node.offsetHeight', node.id, node.offsetHeight)
-    //     elements.current[0][node.id] = node;
-    //     elements.current[1] = Object.keys(elements.current[0]).length === deck.length;
-    //     if (elements.current[1]) setResize(n => n + 1);
-    //   }
-    // }, 0);
     if (adaptiveHeight && node !== null && elements.current && (!elList[node.id] || elList[node.id].offsetHeight !== node.offsetHeight)) {
       elList[node.id] = node;
       elements.current[1] = Object.keys(elList).length === deck.length;
       if (elements.current[1]) setResize(n => n + 1);
     }
-  }, [deck.length]);
+  }, [deckChanged]);
+
+  function setGoneCardsOnInit() {
+    const gone = new Set();
+
+    if (initIndex > 0 && items.length) {
+      forEach(items, (item, i) => {
+        if (i < initIndex) gone.add(i);
+      });
+    }
+
+    return gone;
+  }
 
   useEffect(() => {
     if (adaptiveHeight && elements.current[1]) {
@@ -109,6 +128,8 @@ const Deck = forwardRef((props, ref) => {
   }, [containerHeight]);
 
   useEffect(() => {
+    const nextGone = setGoneCardsOnInit();
+
     if (prevItems.current !== items) {
       gone.clear();
       // itemsHeight.clear();
@@ -116,13 +137,17 @@ const Deck = forwardRef((props, ref) => {
       heightRef.current = 0;
       setHeight(0);
       setDeck(items);
-      setCurrentIndex(0);
-
-      setIsCardSwiped(false);
+      setCurrentIndex(initIndex);
+      setDeckChanged(i => i + 1);
+      setIsCardSwiped(!!nextGone.size);
     }
+
+      setGone(nextGone);
   }, [JSON.stringify(items)]);
 
-  useEffect(() => prevItems.current = items);
+  useEffect(() => {
+    prevItems.current = items
+  });
 
   useImperativeHandle(ref, () => {
     return {
@@ -175,11 +200,19 @@ const Deck = forwardRef((props, ref) => {
         if (i < index) {
           if (!gone.has(i)) {
             gone.add(i);
-            return { x: (200 + window.innerWidth) * -1, rot: 70, delay: 0, };
+            return { x: (200 + window.innerWidth) * -1, rot: 70, visible: 0, delay: 0, };
           }
         } else {
           if (gone.has(i)) gone.delete(i);
-          return { x: 0, y: ungone.indexOf(i) * 13, z: ungone.indexOf(i) * -30, rot: 0, delay: 0, };
+          const visible = i > (index + maxVisibleStack) ? 0 : 1;
+          return {
+            x: 0,
+            y: ungone.indexOf(i) * shiftY,
+            z: ungone.indexOf(i) * translateZ,
+            rot: 0,
+            visible,
+            delay: 0
+          };
         }
       });
       setCurrentIndex(index);
@@ -189,17 +222,28 @@ const Deck = forwardRef((props, ref) => {
   function swipeBack() {
     const goneArr = [...gone];
     const index = goneArr[goneArr.length - 1];
+    const nextCurrentIndex = currentIndex === 0 ? currentIndex : currentIndex - 1;
 
     if (index >= 0 && deck[index]) {
       gone.delete(index);
       const ungone = getUngoneIndexes();
       setSprings(i => {
-        if (!gone.has(i)) {
-          return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * -30, rot: 0, delay: 0, };
+        if (!gone.has(i) && ungone.length) {
+          const visible = i > (nextCurrentIndex + maxVisibleStack) ? 0 : 1;
+          return {
+            x: 0,
+            y: ungone.indexOf(i) * shiftY,
+            z: ungone.indexOf(i) * translateZ,
+            rot: 0,
+            visible,
+            delay: 0
+          };
         }
+        return { visible: 0 };
       });
-      setCurrentIndex(currentIndex === 0 ? currentIndex : currentIndex - 1);
-      if (gone.size === 0) setIsCardSwiped(false);
+      setCurrentIndex(nextCurrentIndex);
+      setIsCardSwiped(gone.size !== 0);
+
       return { item: deck[index], index };
     }
 
@@ -210,14 +254,27 @@ const Deck = forwardRef((props, ref) => {
     const cardIndexToSwipe = index >= 0 ? index : currentIndex;
     const dir = -1;
     const x = getX(dir);
+    const nextCurrentIndex = cardIndexToSwipe === currentIndex ? currentIndex + 1 : currentIndex;
+
     gone.add(cardIndexToSwipe);
     const ungone = getUngoneIndexes();
     setSprings(i => {
-      if (i === cardIndexToSwipe) return { x, rot: 70, delay: 0, config: { friction: 50, tension: 500 } };
-      if (!gone.has(i) && ungone.length) return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * -30, rot: 0, delay: 0, };
+      if (i === cardIndexToSwipe) return { x, rot: 70, visible: 0, delay: 0, config: { friction: 50, tension: 500 } };
+      if (!gone.has(i) && ungone.length) {
+        const visible = i > (nextCurrentIndex + maxVisibleStack) ? 0 : 1;
+        return {
+          x: 0,
+          y: ungone.indexOf(i) * shiftY,
+          z: ungone.indexOf(i) * translateZ,
+          rot: 0,
+          visible,
+          delay: 0
+        };
+      }
     });
-    if (cardIndexToSwipe === currentIndex) setCurrentIndex(currentIndex + 1);
+    setCurrentIndex(nextCurrentIndex);
     setIsCardSwiped(true);
+
     return { item: deck[cardIndexToSwipe], index: cardIndexToSwipe };
   }
 
@@ -225,14 +282,27 @@ const Deck = forwardRef((props, ref) => {
     const cardIndexToSwipe = index >= 0 ? index : currentIndex;
     const dir = 1;
     const x = getX(dir);
+    const nextCurrentIndex = cardIndexToSwipe === currentIndex ? currentIndex + 1 : currentIndex;
+
     gone.add(cardIndexToSwipe);
     const ungone = getUngoneIndexes();
     setSprings(i => {
-      if (i === cardIndexToSwipe) return { x, rot: -70, delay: 0, config: { friction: 50, tension: 500 } };
-      if (!gone.has(i) && ungone.length) return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * -30, rot: 0, delay: 0, };
+      if (i === cardIndexToSwipe) return { x, rot: -70, visible: 0, delay: 0, config: { friction: 50, tension: 500 } };
+      if (!gone.has(i) && ungone.length) {
+        const visible = i > (nextCurrentIndex + maxVisibleStack) ? 0 : 1;
+        return {
+          x: 0,
+          y: ungone.indexOf(i) * shiftY,
+          z: ungone.indexOf(i) * translateZ,
+          rot: 0,
+          visible,
+          delay: 0
+        };
+      }
     });
-    if (cardIndexToSwipe === currentIndex) setCurrentIndex(currentIndex + 1);
+    setCurrentIndex(nextCurrentIndex);
     setIsCardSwiped(true);
+
     return { item: deck[cardIndexToSwipe], index: cardIndexToSwipe };
   }
 
@@ -249,18 +319,31 @@ const Deck = forwardRef((props, ref) => {
       if (index !== i) return; // We're only interested in changing spring-data for the current spring
       let x = down ? mx : 0;
       let rot = -1 * Math.floor(mx / 10);
+      let visible = 1;
       isReadyToLeave = Math.abs(mx) >= trashhold && ((xDir <= 0 && humanDir === 'left') || (xDir >= 0 && humanDir === 'right'));
       changeLabel(mx, down);
       if (!down && !isReadyToLeave) rot = 0;
       if (!down && isReadyToLeave) {
         const ungone = getUngoneIndexes();
+        const nextCurrentIndex = i + 1;
         gone.add(i);
         x = getX(humanDir === 'left' ? -1 : 1);
         rot = humanDir === 'left' ? 70 : -70;
-        setCurrentIndex(i + 1);
+        visible = 0;
+        setCurrentIndex(nextCurrentIndex);
         setIsCardSwiped(true);
         setSprings(i => {
-          if (!gone.has(i) && ungone.length) return { x: 0, y: ungone.indexOf(i) * shiftY, z: ungone.indexOf(i) * -30, rot: 0, delay: 0, };
+          if (!gone.has(i) && ungone.length) {
+            const visible = i > (nextCurrentIndex + maxVisibleStack) ? 0 : 1;
+            return {
+              x: 0,
+              y: ungone.indexOf(i) * shiftY,
+              z: ungone.indexOf(i) * translateZ,
+              rot: 0,
+              visible,
+              delay: 0
+            };
+          }
         });
         setLabel('');
         if (humanDir === 'left') onSwipeLeft(deck[i], i);
@@ -269,7 +352,7 @@ const Deck = forwardRef((props, ref) => {
 
       setLogs(o => ({ ...o, drag: { eventType: event.type, pointerType: event.pointerType, down } }));
 
-      return { x, rot, delay: 0, config: { friction: 50, tension: down ? 800 : 500 }, onRest }
+      return { x, rot, visible, delay: 0, config: { friction: 50, tension: down ? 800 : 500 }, onRest }
     });
 
     if (onSwipeEnd) onSwipeEnd(humanDir);
@@ -286,14 +369,16 @@ const Deck = forwardRef((props, ref) => {
 
       <div className="deck-wrapper" style={{ ...adaptiveHeight && height > 0 ? { minHeight: containerHeight } : {} }}>
         <div className="deck" style={{ ...adaptiveHeight && height > 0 ? { height } : {} }}>
-          {springs.map(({ x, y, z, rot }, i) => {
+          {map(springs, ({ x, y, z, rot, visible }, i, arr) => {
+
             return (
               <animated.div
-                key={i}
+                key={`animated__${i}`}
                 style={{
-                  ...i > currentIndex + maxVisibleStack || i < currentIndex ? { visibility: 'hidden' } : {},
+                  visibility: visible.interpolate(v => !v ? 'hidden' : 'visible'), // change 'interpolate' on v9
+                  opacity: visible,
                   zIndex: i === currentIndex ? 0 : i > currentIndex ? -i : 0,
-                  transform: interpolate([x, y, rot], containerTrans),
+                  transform: to([x, y, rot], containerTrans),
                   touchAction: 'pan-y' /* required on Android */
                 }}
                 className="card-container"
@@ -303,7 +388,7 @@ const Deck = forwardRef((props, ref) => {
                   id={`card__${i}`}
                   style={{
                     ...adaptiveHeight ? { boxSizing: 'border-box' } : {},
-                    transform: interpolate([z], cardTrans)
+                    transform: to([z], cardTrans)
                   }}
                   className={`card-outer ${i === currentIndex ? 'front-card' : ''}`}
                 >

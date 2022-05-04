@@ -16,6 +16,13 @@ let deck_b = [
   { id: 9, name: 'I' },
   { id: 10, name: 'J' },
 ];
+let deck_c = [
+  { id: 11, name: 'K' },
+  { id: 12, name: 'L' },
+  { id: 13, name: 'M' },
+  { id: 14, name: 'N' },
+  { id: 15, name: 'O' },
+];
 
 function getRandomInt(min, max) {
   min = Math.ceil(min);
@@ -30,10 +37,22 @@ function getCardsWithRandomHeight(items) {
 
 function App() {
   const [items, setItems] = useState(() => getCardsWithRandomHeight(deck_a));
+  const [index, setIndex] = useState(0);
+  const [page, setPage] = useState(0);
+  const [forceCompUpdate, setForceCompUpdate] = useState(0);
   const deckRef = useRef(null);
 
+  function reset() {
+    setItems(getCardsWithRandomHeight(deck_a));
+    setPage(0);
+  }
+
   function addItems() {
-    setItems(prevItems => [...prevItems, ...getCardsWithRandomHeight(deck_b)]);
+    if (page < 2) {
+      setItems(prevItems => [...prevItems, ...getCardsWithRandomHeight(page === 0 ? deck_b : deck_c)]);
+      setPage(p => p + 1);
+      setForceCompUpdate(k => k + 1);
+    }
   }
 
   function removeBack() {
@@ -109,6 +128,7 @@ function App() {
   return (
     <div className="App">
       <div className="controllers-wrapper">
+        {/*<button className="controller" onClick={reset}>Reset</button>*/}
         <button className="controller" onClick={addItems}>Add cards</button>
         <button className="controller" onClick={removeBack}>Return Last</button>
         <button className="controller" onClick={swipeLeft}>Swipe Left</button>
@@ -117,10 +137,13 @@ function App() {
         <button className="controller" onClick={() => jumpToCardIndex(document.getElementById('next-index').value)}>To index</button>
         <input id="new-name" placeholder="name" className="input"/>
         <button className="controller" onClick={() => updateCardName(document.getElementById('new-name').value)}>Set new name</button>
+        <input value={index} id="init-index" type="number" placeholder="init index" min={0} className="input" onChange={(e) => setIndex(parseInt(e.target.value))}/>
       </div>
       <p style={{ padding: '0 16px', margin: 0, color: '#CECECE', fontStyle: 'italic' }}>Deck adapts its height on viewport height change</p>
       <Deck
+        // key={forceCompUpdate}
         items={items}
+        initIndex={index}
         renderItem={renderItem}
         ref={deckRef}
         adaptiveHeight={true}
